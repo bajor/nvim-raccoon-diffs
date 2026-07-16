@@ -1,5 +1,7 @@
-.PHONY: test test-pure test-neovim test-host test-host-main test-host-stable lint
+.PHONY: install uninstall test test-pure test-neovim test-host test-host-main test-host-stable lint
 
+PACK_DIR := $(HOME)/.config/nvim/pack/local/start
+PLUGIN_NAME := nvim-raccoon-diffs
 HOST_MAIN_COMMIT := ad11e402d2cc314653a8fd578d9923e8c9642448
 HOST_STABLE_COMMIT := e71faeb393b2b03242bbd593e9900a3a16ecfcb1
 PLENARY_COMMIT := b9fd5226c2f76c951fc8ed5923d85e4de065e509
@@ -7,6 +9,19 @@ HOST_MAIN_PATH ?= .deps/nvim-raccoon-main
 HOST_STABLE_PATH ?= .deps/nvim-raccoon-v0.13.0
 PLENARY_PATH ?= .deps/plenary.nvim
 NVIM ?= nvim
+
+install:
+	@echo "Installing $(PLUGIN_NAME)..."
+	@mkdir -p $(PACK_DIR)
+	@rm -rf $(PACK_DIR)/$(PLUGIN_NAME)
+	@ln -s $(CURDIR) $(PACK_DIR)/$(PLUGIN_NAME)
+	@echo "Symlinked $(CURDIR) -> $(PACK_DIR)/$(PLUGIN_NAME)"
+	@echo "Done! Restart Neovim to load the plugin."
+
+uninstall:
+	@echo "Uninstalling $(PLUGIN_NAME)..."
+	@rm -rf $(PACK_DIR)/$(PLUGIN_NAME)
+	@echo "Done!"
 
 test: test-pure test-neovim test-host lint
 
