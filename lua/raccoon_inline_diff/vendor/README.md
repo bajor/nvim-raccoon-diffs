@@ -29,8 +29,11 @@ Mechanical adaptations:
   each token is one Unicode code point.
 - Linked change components use Lua tables and retain the upstream branch order
   and deletion-preferred tie behavior.
-- Callback, timeout, abort, comparator, and unrelated diff modes were omitted
-  because the extension exposes only the synchronous default
+- A scheduling hook may yield after every 4096 Myers diagonal steps. The hook
+  runs only between iterations and retains the upstream traversal order and
+  result.
+- Upstream async callbacks, timeout, abort, comparator, and unrelated diff
+  modes were omitted because the extension exposes only the default
   `diffWordsWithSpace` behavior.
 
 ## @pierre/diffs
@@ -56,6 +59,8 @@ Mechanical adaptations:
 - HAST decoration objects became UTF-16 ranges plus validated Neovim byte
   ranges.
 - Browser line indexes became host-independent line records.
+- Optional scheduling hooks yield between exact comparisons, typed rows, and
+  patch parsing chunks without changing semantic output.
 - The parser accepts the per-file unified patches exposed by nvim-raccoon and
   retains old lines, new lines, post-image anchors, hunk positions, hunk
   boundaries, and original source rows.
