@@ -1,0 +1,1005 @@
+You are implementing a new standalone Neovim plugin repository:
+
+<owner>/nvim-raccoon-inline-diff
+
+The new plugin extends, but is not part of, the host plugin:
+
+https://github.com/bajor/nvim-raccoon
+
+Implement inline diff highlighting with exact semantic parity to the pinned
+@pierre/diffs release specified below.
+
+This is an implementation and delivery task, not a design-only or planning
+task. Create or initialize the standalone repository, research the pinned
+sources and host integration points, implement the extension, test it, commit
+it, push it, and open a fresh draft pull request in the standalone repository.
+Do not ask for implementation confirmation.
+
+Use the canonical host name `nvim-raccoon`. Do not propagate the misspelling
+`nvim-racoon`.
+
+## Required result
+
+The result must be an independently installable Neovim plugin that declares
+`bajor/nvim-raccoon` as its host dependency. It must not be a proposal for a
+future host change and must not place implementation code in the host
+repository.
+
+Use wording such as:
+
+`Standalone inline-diff extension for nvim-raccoon.`
+
+Do not use wording such as:
+
+`Built-in Raccoon inline diff.`
+
+Never describe the plugin as an official Raccoon component unless the host
+maintainer explicitly adopts it.
+
+## Non-negotiable repository boundary
+
+All shipped implementation, tests, fixtures, documentation, CI, licenses, and
+release metadata must live in the standalone extension repository.
+
+Do not modify `bajor/nvim-raccoon`.
+
+Do not:
+
+- create a feature branch in `bajor/nvim-raccoon`
+- open a pull request against `bajor/nvim-raccoon`
+- copy the extension implementation into `lua/raccoon`
+- add extension files to the host repository
+- require users to apply a patch to the host repository
+- fork the host and present the fork as the solution
+- monkey-patch host functions
+- replace host modules through `package.loaded`
+- override host commands
+- take ownership of review comments, navigation, merge actions, or sync logic
+- modify, clear, rewrite, or reuse host extmark namespaces
+- rely on an unpublished local host checkout at runtime
+
+The only allowed Neovim-plugin runtime dependency is:
+
+- `bajor/nvim-raccoon`
+
+The host repository may be cloned under `/tmp` for read-only research,
+compatibility tests, and fixture generation. Never commit that checkout,
+include it as a submodule, or modify it as part of this task.
+
+If the current working directory is the host repository, stop modifying it.
+Create or switch to a separate sibling repository for the extension before
+writing implementation code.
+
+Before and after implementation, record `git status --short` for any local host
+checkout used for research. The final report must prove that the host checkout
+remained unmodified.
+
+## Relationship to rejected host experiments
+
+Previous host inline-diff branches and pull requests, including host PR #131
+and PR #132, are rejected experiments.
+
+Do not cherry-pick, copy, or reuse their algorithmic implementation.
+
+You may inspect them only to learn:
+
+- host integration locations
+- exposed buffer state
+- route coverage
+- regression cases
+- limitations that a standalone extension must avoid
+
+Do not modify, close, reopen, or supersede those host pull requests.
+
+## Repository instructions
+
+Read and obey the standalone repository's `AGENTS.md` before doing anything if
+it exists.
+
+Inspect the host repository's `AGENTS.md` read-only when it contains constraints
+relevant to compatibility, tests, buffer ownership, or public APIs.
+
+If the standalone repository does not exist, create it. If it exists but is
+empty, initialize it. At minimum, include:
+
+- an appropriate open-source license
+- `README.md`
+- `CHANGELOG.md`
+- `lua/raccoon_inline_diff/`
+- `plugin/`
+- `tests/`
+- `.github/workflows/`
+- `licenses/`
+- a test and lint workflow suitable for a Lua Neovim plugin
+
+Do not put the new plugin under the `raccoon` Lua namespace. Use the independent
+module namespace:
+
+`raccoon_inline_diff`
+
+Use a distinct plugin command prefix only when commands are necessary. Prefer
+`setup()` and automatic attachment over duplicating host commands.
+
+## Absolute semantic priority
+
+Exact upstream behavior is the primary requirement. This instruction
+supersedes any earlier instruction that conflicts with exact Pierre behavior.
+
+Do not improve, reinterpret, or hybridize the upstream algorithm. If Pierre's
+output looks less intuitive for a particular input, reproduce it anyway.
+
+Do not add:
+
+- Neovim `vim.diff` line pairing
+- line-similarity pairing
+- identifier-specific character refinement
+- a fallback pairing strategy
+- custom word-boundary logic
+- custom span merging
+- grapheme normalization
+- additional suppression thresholds
+- smarter behavior copied from VS Code, GitHub, IntelliJ, or another diff
+  implementation
+
+## Required standalone architecture
+
+The extension must contain four explicit layers:
+
+1. A pure semantic engine that knows nothing about Neovim or Raccoon.
+2. A host adapter that observes supported Raccoon buffers and copies the
+   minimum required patch and coordinate data.
+3. A renderer that owns only the extension's namespace and extmarks.
+4. A lifecycle controller that attaches, refreshes, cancels stale work, and
+   detaches without changing host state.
+
+A suggested layout is:
+
+- `lua/raccoon_inline_diff/init.lua`
+- `lua/raccoon_inline_diff/config.lua`
+- `lua/raccoon_inline_diff/planner.lua`
+- `lua/raccoon_inline_diff/utf16.lua`
+- `lua/raccoon_inline_diff/render.lua`
+- `lua/raccoon_inline_diff/lifecycle.lua`
+- `lua/raccoon_inline_diff/host/raccoon.lua`
+- `lua/raccoon_inline_diff/vendor/jsdiff.lua`
+- `lua/raccoon_inline_diff/vendor/README.md`
+- `plugin/raccoon-inline-diff.lua`
+- `tests/unit/`
+- `tests/integration/`
+- `tests/fixtures/`
+- `licenses/jsdiff.txt`
+- `licenses/pierre-diffs.txt`
+
+The exact layout may differ, but the semantic engine, host adapter, renderer,
+and lifecycle ownership must remain separated.
+
+The semantic engine must be testable without loading Neovim or the host plugin.
+The host adapter must be thin and isolated. Host-specific assumptions must not
+leak into the vendored algorithm or pure planner.
+
+## Host integration contract
+
+Inspect the latest host `main` and latest stable host release at implementation
+time. Record the exact commits and tags in the extension documentation and
+test fixtures.
+
+Use this integration priority:
+
+1. Documented public Raccoon APIs.
+2. Documented `User` autocommands or events.
+3. Documented buffer variables or metadata.
+4. Stable, externally observable Neovim buffer and extmark state.
+5. A narrowly isolated compatibility adapter for unavoidable host internals.
+
+Do not assume that an API exists. Verify it from host source and tests.
+
+Do not use private host modules merely because they are easy to require. If a
+private host interface is unavoidable, all of the following are required:
+
+- isolate access in `lua/raccoon_inline_diff/host/raccoon.lua`
+- pin and test the exact host versions that expose it
+- perform runtime capability checks
+- fail closed with a clear diagnostic when incompatible
+- document the private dependency and its risk
+- avoid mutating returned host-owned tables
+- avoid calling functions with side effects unrelated to rendering
+- make no false claim of general compatibility
+
+The extension must never patch or replace host functions or modules.
+
+Use one dedicated namespace created by the extension, for example:
+
+`vim.api.nvim_create_namespace("raccoon_inline_diff")`
+
+When the host refreshes or replaces a buffer, recompute and reapply only the
+extension's decorations.
+
+When the host closes a view, changes pull requests, changes commits, refreshes
+current changes, or invalidates a buffer, cancel stale extension work and
+release extension-owned state.
+
+Do not create fake review coordinates. Do not alter host buffer lines, virtual
+lines, signs, keymaps, window options, commands, comment anchors, navigation
+targets, or review semantics.
+
+## Compatibility and failure behavior
+
+Perform explicit compatibility checks during setup or first attachment.
+
+At minimum, check:
+
+- Neovim version
+- host plugin availability
+- required host capabilities
+- expected buffer metadata or observable structure
+- highlight and extmark APIs used by the renderer
+
+An unsupported host version must not produce corrupted highlights or Lua
+tracebacks during ordinary use.
+
+For unsupported versions:
+
+- do not attach
+- emit one actionable diagnostic
+- identify the detected host version or commit when available
+- identify the missing capability
+- leave all host behavior untouched
+
+Do not silently claim support for routes that cannot be integrated without host
+changes.
+
+If exact integration for a required route is impossible without modifying the
+host, stop implementation for that route and report the concrete missing
+extension point. Do not violate the repository boundary to force completion.
+
+## Pinned upstream target
+
+Use only the following pinned sources.
+
+### @pierre/diffs
+
+Repository:
+https://github.com/pierrecomputer/pierre
+
+Release/tag:
+`diffs-v1.2.12`
+
+Commit:
+`9466c467ae6fc03501b6bca74c12f717d70293a7`
+
+Package version:
+`1.2.12`
+
+License:
+`Apache-2.0`
+
+Inspect at least:
+
+- `packages/diffs/src/utils/parsePatchFiles.ts`
+- `packages/diffs/src/utils/iterateOverDiff.ts`
+- `packages/diffs/src/utils/parseDiffFromFile.ts`
+- `packages/diffs/src/utils/renderDiffWithHighlighter.ts`
+- `packages/diffs/src/utils/parseDiffDecorations.ts`
+- `packages/diffs/src/utils/cleanLastNewline.ts`
+- `packages/diffs/src/renderers/DiffHunksRenderer.ts`
+- `packages/diffs/src/worker/WorkerPoolManager.ts`
+- `packages/diffs/src/types.ts`
+- relevant upstream tests and fixtures
+- `apps/diffshub/components/DiffsHubViewer.tsx`
+- `apps/diffshub/components/WorkerPoolContext.tsx`
+
+Inspect the Diffshub application to confirm which package options it actually
+sets. At this pinned revision it does not override `lineDiffType`. Verify the
+effective defaults:
+
+- `lineDiffType = "word-alt"`
+- `maxLineDiffLength = 1000`
+
+Do not use the moving Pierre `main` branch or current live website as an
+unstated source of behavior.
+
+### jsdiff
+
+Repository:
+https://github.com/kpdecker/jsdiff
+
+Release/tag:
+`v9.0.0`
+
+Commit:
+`ed13aca03aa25735fafc0645d1185e7a1c68fd8c`
+
+Package:
+`diff@9.0.0`
+
+License:
+`BSD-3-Clause`
+
+Inspect at least:
+
+- `src/diff/base.ts`
+- `src/diff/word.ts`
+- `src/diff/character.ts`
+- relevant upstream tests and fixtures
+
+## Definition of exact parity
+
+For the same parsed patch and effective options, the standalone extension's
+semantic engine must produce exactly the same:
+
+1. Context and change groups.
+2. Change-block boundaries.
+3. Deletion and addition row pairings.
+4. Decision to compute or suppress an inline diff.
+5. jsdiff change-object sequence.
+6. Highlighted UTF-16 ranges on the deletion side.
+7. Highlighted UTF-16 ranges on the addition side.
+8. Changed-text coverage after conversion to Neovim byte columns.
+
+Pixel-perfect browser rendering is out of scope because Neovim uses native
+syntax highlighting and extmarks instead of Shiki, HAST, CSS, and the DOM.
+Describe the result as semantically exact, not pixel-identical.
+
+Exact semantic parity applies to the pure planner. Host integration parity
+means every supported Raccoon route uses the same planner output without
+changing host review semantics.
+
+Never claim exactness based only on a green local suite. Exactness requires zero
+mismatches against the pinned executable oracle.
+
+## Required row pairing
+
+Reproduce `iterateOverDiff.ts` exactly.
+
+A contiguous change block containing `D` deletions and `A` additions has
+`max(D, A)` split rows.
+
+For zero-based row index `i`:
+
+- pair `deletion[i]` with `addition[i]` when both exist
+- a deletion with no addition has whole-line deletion highlighting only
+- an addition with no deletion has whole-line addition highlighting only
+- never realign rows by similarity or content
+- never use `vim.diff` to change this pairing
+
+Example: two deletions and three additions produce these rows:
+
+1. deletion 1 paired with addition 1
+2. deletion 2 paired with addition 2
+3. unpaired addition 3
+
+Example: three deletions and one addition produce these rows:
+
+1. deletion 1 paired with addition 1
+2. unpaired deletion 2
+3. unpaired deletion 3
+
+This positional behavior is required even when an inserted line appears at the
+start or middle of a block.
+
+## Required inline algorithm
+
+For every paired deletion and addition row, mechanically reproduce
+`computeLineDiffDecorations` from the pinned release.
+
+Use this exact sequence:
+
+1. Apply the exact `cleanLastNewline` behavior.
+2. Measure line length using JavaScript UTF-16 code units, not UTF-8 bytes,
+   Unicode code points, display cells, or grapheme clusters.
+3. Skip inline decorations when either side contains more than 1000 UTF-16 code
+   units.
+4. Keep a line containing exactly 1000 UTF-16 code units eligible.
+5. Run `diffWordsWithSpace` from `diff@9.0.0`.
+6. Apply Pierre's exact `word-alt` `pushOrJoinSpan` behavior.
+7. Preserve the `isLastItem` behavior exactly.
+8. Treat `item.value.length === 1` as one JavaScript UTF-16 code unit. Do not
+   reinterpret it as one Unicode character or one whitespace character.
+9. Produce exactly the upstream deletion and addition decorations.
+10. Only after upstream UTF-16 spans are complete, convert them to valid
+    zero-based, end-exclusive Neovim UTF-8 byte columns.
+
+Do not add a second `diffChars` pass. The pinned Diffshub default is `word-alt`,
+not an automatic word and character hybrid.
+
+The following example must follow Pierre even if another result appears more
+precise:
+
+```diff
+-old_timeout = calculate_timeout(config)
++new_timeout = calculate_timeout(options)
+```
+
+Expected strong deletion spans:
+
+- `old_timeout`
+- `config`
+
+Expected strong addition spans:
+
+- `new_timeout`
+- `options`
+
+Do not refine `old_timeout` and `new_timeout` to only `old` and `new`.
+
+Character mode may be ported only if an existing upstream option requires it.
+It must not replace the Diffshub default.
+
+## Exact jsdiff port
+
+Vendor the smallest exact source subset needed to reproduce:
+
+- `diffWordsWithSpace`
+- synchronous Myers traversal
+- upstream tokenization
+- upstream equality behavior
+- upstream tie-breaking
+- upstream change-object construction
+- `diffChars` only if required to faithfully support an upstream option
+
+Mechanically port the algorithm to Lua. Preserve algorithmic control flow and
+tie-breaking. Do not rewrite it from memory.
+
+Handle these JavaScript semantic details explicitly:
+
+- JavaScript strings use UTF-16 code units.
+- `diffChars` tokenization uses JavaScript `Array.from`, which iterates Unicode
+  code points.
+- The word tokenizer uses the exact pinned regular-expression character
+  ranges.
+- CRLF, LF, non-newline whitespace, punctuation, extended Latin, CJK,
+  combining marks, and astral characters must match upstream.
+- Invalid or unsupported input must not silently produce different spans.
+
+Store or expose each upstream UTF-16 range before byte conversion so tests can
+validate both representations.
+
+The vendored algorithm belongs only to the standalone extension repository.
+
+## Development-time executable oracle
+
+A temporary Node.js environment outside the extension repository is allowed
+solely as a development oracle.
+
+Node.js must not become a runtime, installation, normal test-suite, or
+maintenance dependency of the extension or host.
+
+Before implementing the Lua port:
+
+1. Check out the exact Pierre and jsdiff tags under `/tmp`.
+2. Verify their commits and licenses.
+3. Build a temporary oracle around the pinned upstream functions.
+4. Generate authoritative fixtures containing parsed change groups, positional
+   row pairings, jsdiff change objects, deletion UTF-16 spans, and addition
+   UTF-16 spans.
+5. Record the exact source revisions and deterministic fixture-generation seed.
+
+After implementing:
+
+- compare the Lua jsdiff port against real `diff@9.0.0`
+- compare the complete local planner against the pinned Pierre oracle
+- require zero mismatches
+- do not publish while any unexplained mismatch remains
+
+Run at least 10,000 deterministic randomized paired-line comparisons covering:
+
+- ASCII identifiers and prose
+- repeated words and repeated punctuation
+- spaces, multiple spaces, tabs, CR, LF, and CRLF
+- leading and trailing whitespace
+- punctuation-only strings
+- extended Latin
+- decomposed combining sequences
+- CJK
+- BMP symbols
+- emoji and other astral code points
+- zero-width joiners and emoji sequences
+- empty strings
+- completely unrelated strings
+- ambiguous Myers tie-breaking cases
+- lines of 999, 1000, and 1001 UTF-16 code units
+
+Also generate randomized change blocks with unequal line counts and compare the
+complete row-pair and span output against Pierre.
+
+Committed tests must use frozen fixtures and require no Node.js. Document
+fixture provenance and licensing.
+
+## Performance without semantic divergence
+
+Do not introduce extension-only limits such as:
+
+- maximum edit length
+- token-product limits
+- maximum replacement-block lines
+- hunk byte budgets
+- file byte budgets
+
+Those limits change valid Pierre output and violate parity. The exact upstream
+1000-UTF-16-unit per-line suppression rule is allowed and required.
+
+If exact eligible comparisons are too expensive on Neovim's main thread:
+
+- leave the host's whole-line highlight visible immediately
+- run the exact algorithm incrementally using Lua coroutines or scheduled
+  chunks
+- yield between Myers iterations without changing their order or result
+- cancel stale work through an extension-owned render generation token
+- cache completed results by exact old text, new text, and effective options
+- apply final inline extmarks only when the buffer, host view identity, and
+  extension render generation remain valid
+
+Do not replace an expensive exact result with a heuristic or whole-line
+fallback.
+
+If exact computation cannot be made acceptably responsive without changing
+output, report that engineering limitation instead of claiming parity.
+
+## Patch and coordinate model
+
+Port Pierre's context and change-grouping semantics while preserving the host's
+GitHub review coordinates.
+
+The extension may read coordinate metadata required to identify rows, but it
+must not own or rewrite that metadata.
+
+Each deletion must retain:
+
+- complete content
+- old-side line number
+- post-image anchor line
+- hunk position
+
+Each addition must retain:
+
+- complete content
+- new-side line number
+- hunk position
+
+Requirements:
+
+- Context or a hunk boundary ends the current change block.
+- Multiple hunks never pair across boundaries.
+- `\ No newline at end of file` is metadata, not changed content.
+- CRLF handling must match upstream.
+- Deleted virtual lines must remain virtual.
+- Deleted virtual lines must never become fake GitHub review lines.
+- Existing comment placement and navigation semantics must remain unchanged.
+- Extension decorations must not affect host line-number or hunk-position
+  calculations.
+
+The host adapter must copy only the data needed by the pure planner. Do not
+pass mutable host-owned state into asynchronous work.
+
+## Raccoon routes
+
+Research all current host routes and support every route that can be integrated
+without modifying the host:
+
+- flat pull-request diff buffers
+- deleted virtual lines
+- commit-viewer grid cells
+- commit-viewer file previews
+- maximized commit diffs
+- local commit viewer
+- local `Current changes`
+- working-directory refreshes
+
+Use one shared semantic planner and one shared rendering layer for every
+supported route. Do not duplicate the algorithm per route.
+
+For each route, document:
+
+- how the extension detects the route
+- which stable data it reads
+- how it maps planner rows to buffer or virtual-text coordinates
+- what invalidates the route
+- which host versions are covered by tests
+
+If a route cannot be supported without a host change, do not fake support.
+Mark it unsupported and report the exact missing host capability.
+
+## Rendering ownership
+
+The extension owns only its extmarks and highlight groups. It must not clear,
+rewrite, or reuse host namespaces.
+
+Do not reapply host whole-line backgrounds or signs unless the host exposes a
+supported extension-rendering contract that explicitly requires it.
+
+The normal mapping is:
+
+- host whole added row remains `RaccoonAdd`
+- extension added inline decoration uses `RaccoonInlineDiffAddText`
+- host whole deleted row remains `RaccoonDelete`
+- extension deleted inline decoration uses `RaccoonInlineDiffDeleteText`
+- existing host add and delete signs remain intact
+
+Define extension groups with sensible defaults and compatibility links:
+
+- `RaccoonInlineDiffAddText`
+- `RaccoonInlineDiffDeleteText`
+
+Where safe, default-link them to host groups:
+
+- `RaccoonAddText`
+- `RaccoonDeleteText`
+
+If those host groups are absent, provide documented fallback links using
+standard diff highlight groups. Never overwrite user-defined highlights.
+
+Paired additions must receive strong inline backgrounds whenever Pierre emits
+addition decorations. This is mandatory.
+
+Unpaired additions and deletions receive no extension inline decoration
+because Pierre emits no line-diff decoration without both sides. Their host
+whole-line backgrounds remain untouched.
+
+Use `hl_mode = "combine"` and deliberate priorities so native syntax
+foregrounds remain visible.
+
+Clear only the extension's dedicated namespace. Reapplication must be
+idempotent and must not create duplicate marks. Unrelated namespaces must
+remain unchanged.
+
+## Deleted virtual lines
+
+Deleted virtual lines require special handling because their text may be owned
+by a host extmark instead of real buffer lines.
+
+Use a supported host extension contract when one exists.
+
+Do not inspect and rewrite arbitrary host extmarks as the normal integration
+strategy. Do not delete and recreate host virtual lines. Do not truncate
+content.
+
+When the host exposes sufficient data and a supported rendering hook, render
+deleted virtual-line content as multiple chunks:
+
+- marker or sign chunk
+- subdued unchanged deletion chunks
+- strong changed deletion chunks
+
+The strong chunks must match the exact planner byte ranges.
+
+If the host does not expose a safe way for an external plugin to augment
+deleted virtual-line chunks, mark this route unsupported and report the missing
+hook. Do not modify the host to obtain it.
+
+## Setup API
+
+Expose a conventional setup API:
+
+```lua
+require("raccoon_inline_diff").setup({
+  enabled = true,
+})
+```
+
+Keep configuration minimal. Do not expose options that alter exact Pierre
+semantics.
+
+The following must not be configurable:
+
+- row-pairing strategy
+- tokenizer behavior
+- span merging
+- line-diff algorithm
+- 1000-UTF-16-unit threshold
+- Myers tie-breaking
+- UTF-16 interpretation
+
+Reasonable non-semantic options may include:
+
+- enable or disable
+- diagnostic verbosity
+- cache size when eviction does not alter results
+- scheduling chunk size when it does not alter results
+- explicit highlight-group overrides
+- route allowlist for troubleshooting
+
+Defaults must provide exact semantics without configuration.
+
+## Installation documentation
+
+Document installation as a separate plugin that depends on the host. Include
+examples for `lazy.nvim` and at least one other common plugin manager.
+
+The `lazy.nvim` example must have this structure:
+
+```lua
+{
+  "<owner>/nvim-raccoon-inline-diff",
+  dependencies = {
+    "bajor/nvim-raccoon",
+  },
+  opts = {},
+}
+```
+
+Do not instruct users to patch, fork, or edit the host plugin. Do not place
+setup code in the host repository.
+
+## Runtime dependencies
+
+The only allowed Neovim-plugin runtime dependency is
+`bajor/nvim-raccoon`.
+
+Do not add:
+
+- Node.js, npm, Bun, Deno, Python, Ruby, or an external CLI requirement
+- another Neovim plugin
+- a native library
+- a browser or webview
+- Shiki
+- a network request
+- a git submodule
+- an updater or source-sync command
+- code following an unpinned upstream algorithm branch
+
+The extension may use Neovim and Lua standard facilities available in its
+supported Neovim versions.
+
+Temporary development-oracle tooling must remain outside the shipped runtime
+and normal test suite.
+
+## Licensing and vendoring
+
+Before copying code:
+
+- verify each exact upstream license at the pinned commit
+- preserve copyright and SPDX notices
+- include the complete required license text
+- document every copied function and mechanical modification
+- document why vendoring is required
+- do not copy compiled, minified, generated, DOM, React, HAST, Shiki, worker,
+  cache, or browser-rendering code
+
+Use a structure such as:
+
+- `lua/raccoon_inline_diff/vendor/jsdiff.lua`
+- `lua/raccoon_inline_diff/vendor/README.md`
+- `licenses/jsdiff.txt`
+- `licenses/pierre-diffs.txt`
+
+The vendor README must record:
+
+- upstream project and repository
+- exact tag and commit
+- package version
+- original source paths
+- copied functions
+- local destination
+- original license
+- every mechanical Lua adaptation
+- fixture provenance
+- vendoring date
+- reason no runtime dependency is used
+
+Do not place vendored files in the host repository.
+
+## Required pure tests
+
+Add pure tests for:
+
+- exact positional block pairing
+- all equal and unequal block shapes
+- inserted lines at the beginning, middle, and end
+- deleted lines at the beginning, middle, and end
+- add-only and delete-only blocks
+- multiple hunks and context boundaries
+- exact Pierre `word-alt` output
+- exact upstream Myers tie-breaking
+- repeated words and punctuation
+- empty lines
+- whitespace-only changes
+- leading and trailing whitespace
+- tabs and CRLF
+- no-newline markers
+- extended Latin
+- CJK
+- emoji
+- combining marks
+- zero-width joiner sequences
+- UTF-16-to-UTF-8 mapping
+- exactly 999, 1000, and 1001 UTF-16 units
+- deterministic output
+
+The pure suite must run without loading Raccoon.
+
+## Required Neovim rendering tests
+
+Add real Neovim extmark tests for:
+
+- extension inline highlight groups
+- exact byte start and end columns
+- valid UTF-8 boundaries
+- `hl_mode = "combine"`
+- extension namespace clearing
+- reapplication without duplicate marks
+- preservation of host and unrelated namespaces
+- cancellation of stale scheduled work
+- buffer deletion during computation
+- buffer reuse with a new host view
+- user-defined highlight preservation
+
+Do not use visual snapshots without exact span assertions.
+
+## Required host integration tests
+
+Test the extension against pinned, unmodified host checkouts.
+
+At minimum, test:
+
+- latest stable host release identified during implementation
+- exact latest host `main` commit used during implementation
+- minimum Neovim version supported by the extension
+- current stable Neovim
+
+Tests must prove:
+
+- the host loads normally with the extension absent
+- the host loads normally with the extension enabled
+- the extension does not replace host modules
+- the extension does not modify host namespaces
+- the extension does not alter host buffer text
+- the extension does not alter review coordinates
+- the extension does not duplicate host signs
+- disabling the extension restores plain host behavior
+- unsupported host capabilities fail closed
+- supported routes receive oracle-derived inline spans
+
+Add route tests for every route claimed as supported:
+
+- flat pull-request buffers
+- commit grid cells
+- file previews
+- maximized views
+- local commits
+- `Current changes` refreshes
+- deleted virtual lines only when a supported external rendering hook exists
+
+Do not claim a route as supported without an automated integration test. Do not
+add test-only patches to the host checkout.
+
+## Host compatibility fixtures
+
+Record the host commit or release used for every host fixture.
+
+Do not freeze undocumented host internals into broad compatibility claims.
+When fixtures depend on private host structures, label them clearly and keep
+their assertions inside the isolated host-adapter test suite.
+
+Add a compatibility matrix to the README containing:
+
+- host version or commit
+- Neovim version
+- supported routes
+- unsupported routes
+- integration mechanism
+- test status
+
+## Documentation requirements
+
+Document:
+
+- that this is a separate plugin, not part of `bajor/nvim-raccoon`
+- the host dependency and installation order
+- the standalone repository boundary
+- the pinned Pierre and jsdiff revisions
+- the precise definition of semantic parity
+- positional row pairing
+- `word-alt` as the exact default
+- the 1000-UTF-16-unit suppression rule
+- why `old_timeout` and `new_timeout` are whole-token changes
+- UTF-16-to-byte conversion
+- the distinction between semantic parity and browser pixel rendering
+- the absence of runtime JavaScript or external CLI dependencies
+- the extension namespace and highlight groups
+- host compatibility policy
+- supported and unsupported Raccoon routes
+- failure behavior for incompatible host versions
+- any reliance on private host interfaces
+- how to disable and troubleshoot the extension
+
+Never make a `100% exact` claim unless the differential oracle reports zero
+mismatches.
+
+## Execution workflow
+
+1. Verify that implementation work is occurring in the standalone extension
+   repository, not in `bajor/nvim-raccoon`.
+2. Read the extension repository's `AGENTS.md` when present.
+3. Run the extension's baseline tests before modifying code.
+4. Clone exact host versions needed for read-only research under `/tmp`.
+5. Inspect host parser, renderer, refresh, buffer, extmark, and review-coordinate
+   routes.
+6. Identify and document the narrowest non-mutating extension contract.
+7. Establish the executable Pierre and jsdiff oracle and frozen fixtures before
+   writing the replacement algorithm.
+8. Implement the pure semantic engine before host integration.
+9. Implement the host adapter without patching or monkey-patching the host.
+10. Implement extension-owned rendering and lifecycle handling.
+11. Add compatibility and route tests.
+12. Implement in small, reviewable commits.
+13. Run focused tests after every logical step.
+14. Run the repository's full tests, lint, formatting checks, and
+    `git diff --check`.
+15. Test under the minimum supported Neovim and current stable Neovim.
+16. Test against the pinned stable host release and pinned host `main` commit.
+17. Manually inspect representative Lua, TypeScript or Rust, Markdown, Unicode,
+    unequal-block, and 1001-UTF-16-unit diffs through the standalone extension.
+18. Verify that uninstalling or disabling the extension leaves the host
+    unchanged.
+19. Push a fresh branch in the standalone extension repository.
+20. Create a fresh draft pull request against the standalone extension
+    repository's default branch.
+21. Do not open, modify, close, or supersede a host pull request.
+
+## Acceptance criteria
+
+The task is complete only when all of the following are true:
+
+1. All shipped work exists in the standalone extension repository.
+2. `bajor/nvim-raccoon` has no modifications.
+3. The extension declares the host as a dependency instead of embedding itself
+   in the host.
+4. The complete planner produces zero mismatches against the pinned Pierre
+   oracle.
+5. The Lua jsdiff subset produces zero mismatches against `diff@9.0.0`.
+6. Change blocks and row pairs match `iterateOverDiff.ts` exactly.
+7. `word-alt` spans match `computeLineDiffDecorations` and `pushOrJoinSpan`
+   exactly.
+8. No identifier refinement or similarity pairing exists.
+9. Both deleted and added paired rows receive exact upstream spans on every
+   supported route.
+10. UTF-16 thresholds and span positions convert to valid byte columns without
+    changing coverage.
+11. Every claimed route uses the same semantic engine.
+12. The extension does not alter host review comments, navigation, merge
+    actions, sync, buffer text, signs, or coordinates.
+13. The extension owns and clears only its own namespace.
+14. Disabling or uninstalling the extension restores unchanged host behavior.
+15. Unsupported host versions fail closed with an actionable diagnostic.
+16. No host monkey-patching or module replacement exists.
+17. No runtime JavaScript, external CLI, native library, or extra Neovim-plugin
+    dependency exists.
+18. Vendored code and fixtures are pinned, licensed, and fully documented.
+19. Full tests, lint, minimum-Neovim tests, stable-Neovim tests, host
+    compatibility tests, and all GitHub checks pass.
+20. Pull-request documentation states that semantic behavior is exact but
+    browser pixels are not reproduced.
+21. No `100% exact` claim is made unless the differential oracle reports zero
+    mismatches.
+22. No route is claimed as supported without an automated integration test.
+23. Any route blocked by missing host extension points is explicitly reported
+    instead of being implemented by modifying the host.
+24. The branch and draft pull request belong only to the standalone extension
+    repository.
+
+## Final report
+
+Report all of the following:
+
+- standalone repository URL
+- all files changed
+- architecture and data flow
+- host integration mechanism
+- host versions and commits tested
+- supported and unsupported host routes
+- exact upstream Pierre and jsdiff tags and commit hashes
+- copied functions and mechanical adaptations
+- licenses and fixture provenance
+- oracle design, seed, case count, and mismatch count
+- tests added
+- commands run and results
+- performance measurements
+- namespace and lifecycle behavior
+- compatibility matrix
+- any reliance on private host interfaces
+- any missing host extension point
+- any unavoidable Neovim rendering differences
+- proof that the host repository remained unmodified
+- extension branch
+- extension commit hashes
+- fresh draft pull-request URL in the standalone extension repository
