@@ -4,27 +4,42 @@ on:
   push:
     branches: [main]
   pull_request:
-
-permissions:
-  contents: read
+    branches: [main]
 
 jobs:
+  lint:
+    name: Luacheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Luacheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lua5.1 luarocks
+          sudo luarocks install luacheck
+
+      - name: Run Luacheck
+        run: luacheck lua/ plugin/ tests/ --config .luacheckrc
+
   test:
-    name: Neovim ${{ matrix.neovim }}
+    name: Tests (${{ matrix.neovim_version }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        neovim: [v0.10.4, v0.12.4]
+        neovim_version: [v0.10.4, stable, nightly]
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install Neovim
         uses: rhysd/action-setup-vim@v1
         with:
-          version: ${{ matrix.neovim }}
           neovim: true
+          version: ${{ matrix.neovim_version }}
 
       - name: Install Lua and Luacheck
         run: |

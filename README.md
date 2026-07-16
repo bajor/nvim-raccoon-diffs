@@ -17,6 +17,37 @@ Semantic output is exact for the pinned behavior. Browser pixels are not
 reproduced: Neovim renders native syntax highlighting and extmarks instead of
 Shiki, HAST, CSS, and DOM elements.
 
+## What this plugin does
+
+Raccoon already highlights complete added and deleted lines. This extension
+adds a stronger background only to the words or text fragments that changed
+inside paired lines. It does not add a separate diff viewer or change how
+Raccoon opens pull requests, commits, comments, or local changes.
+
+The extension is automatic:
+
+1. Install and configure `bajor/nvim-raccoon` normally.
+2. Install this plugin after Raccoon.
+3. Open any supported Raccoon diff view as usual.
+4. The extension detects the view and adds inline highlights. No extension
+   command or keymap is required.
+
+## Is configuration required?
+
+No extension configuration is required. The default setup is equivalent to:
+
+```lua
+require("raccoon_inline_diff").setup()
+```
+
+Raccoon itself must still be configured, including its GitHub credentials, as
+described in the [Raccoon documentation](https://github.com/bajor/nvim-raccoon#configuration).
+The extension reads supported Raccoon views but never reads or owns GitHub
+credentials.
+
+Optional extension settings are limited to enabling the plugin and controlling
+compatibility diagnostics. They cannot change the pinned diff semantics.
+
 ## Requirements
 
 - Neovim 0.10.4 or newer
@@ -29,20 +60,30 @@ external command. Raccoon's own transitive requirements remain unchanged.
 
 ## Installation
 
-Install Raccoon before this extension.
+Install and configure Raccoon before this extension.
 
 ### lazy.nvim
 
 ```lua
-{
-  "bajor/nvim-raccoon-diffs",
-  main = "raccoon_inline_diff",
-  dependencies = {
+return {
+  {
     "bajor/nvim-raccoon",
+    dependencies = { "nvim-lua/plenary.nvim" },
+    config = function()
+      require("raccoon").setup()
+    end,
   },
-  opts = {},
+  {
+    "bajor/nvim-raccoon-diffs",
+    main = "raccoon_inline_diff",
+    dependencies = { "bajor/nvim-raccoon" },
+    opts = {},
+  },
 }
 ```
+
+If Raccoon is already declared elsewhere in the lazy.nvim configuration, only
+the second plugin specification is needed.
 
 ### vim-plug
 

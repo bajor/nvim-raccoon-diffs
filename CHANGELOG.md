@@ -1,8 +1,11 @@
 # Changelog
 
-All notable changes to this project are documented in this file.
+All notable changes to this project are documented in this file. The format is
+based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## Unreleased
+## [0.1.0] - 2026-07-16
+
+### Added
 
 - Add the standalone `raccoon_inline_diff` setup API and lifecycle.
 - Add exact pinned Pierre `word-alt` and jsdiff 9.0.0 semantics in pure Lua.
