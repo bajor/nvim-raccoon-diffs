@@ -8,6 +8,8 @@ local utf16 = require("raccoon_inline_diff.utf16")
 local M = {}
 
 M.MAX_LINE_DIFF_UTF16_UNITS = 1000
+local ROW_YIELD_INTERVAL = 32
+local PATCH_LINE_YIELD_INTERVAL = 256
 
 ---Match @pierre/diffs cleanLastNewline exactly.
 ---@param contents string
@@ -62,8 +64,9 @@ end
 ---Compute exact Pierre word-alt decorations for one paired row.
 ---@param deletion_input string
 ---@param addition_input string
+---@param yield_control? function Optional scheduling hook; does not alter semantic output.
 ---@return table
-function M.line_diff(deletion_input, addition_input)
+function M.line_diff(deletion_input, addition_input, yield_control)
   local deletion = M.clean_last_newline(deletion_input)
   local addition = M.clean_last_newline(addition_input)
   if utf16.length(deletion) > M.MAX_LINE_DIFF_UTF16_UNITS
@@ -79,7 +82,7 @@ function M.line_diff(deletion_input, addition_input)
     }
   end
 
-  local changes = jsdiff.diff_words_with_space(deletion, addition)
+  local changes = jsdiff.diff_words_with_space(deletion, addition, yield_control)
   local deletion_spans = {}
   local addition_spans = {}
   for index, item in ipairs(changes) do
@@ -112,11 +115,13 @@ end
 
 ---Plan positional rows for typed content from one hunk.
 ---@param records table[] Entries with kind=addition|deletion|context and content.
+---@param yield_control? function Optional scheduling hook; does not alter semantic output.
 ---@return table[]
-function M.plan_typed_lines(records)
+function M.plan_typed_lines(records, yield_control)
   local rows = {}
   local deletions = {}
   local additions = {}
+  local rows_since_yield = 0
 
   local function flush_change()
     local count = math.max(#deletions, #additions)
@@ -127,8 +132,13 @@ function M.plan_typed_lines(records)
         kind = "change",
         deletion = deletion,
         addition = addition,
-        inline = deletion and addition and M.line_diff(deletion.content, addition.content) or nil,
+        inline = deletion and addition and M.line_diff(deletion.content, addition.content, yield_control) or nil,
       }
+      rows_since_yield = rows_since_yield + 1
+      if yield_control and rows_since_yield == ROW_YIELD_INTERVAL then
+        rows_since_yield = 0
+        yield_control()
+      end
     end
     deletions = {}
     additions = {}
@@ -189,8 +199,9 @@ end
 
 ---Parse a host-style per-file unified patch and plan every hunk independently.
 ---@param patch string
+---@param yield_control? function Optional scheduling hook; does not alter semantic output.
 ---@return table
-function M.plan_patch(patch)
+function M.plan_patch(patch, yield_control)
   assert(type(patch) == "string", "patch must be a string")
   local hunks = {}
   local current
@@ -198,10 +209,11 @@ function M.plan_patch(patch)
   local new_line
   local hunk_position
   local source_row
+  local patch_lines_since_yield = 0
 
   local function finish_hunk()
     if not current then return end
-    current.rows = M.plan_typed_lines(current.records)
+    current.rows = M.plan_typed_lines(current.records, yield_control)
     hunks[#hunks + 1] = current
     current = nil
   end
@@ -268,6 +280,11 @@ function M.plan_patch(patch)
         new_line = new_line + 1
         source_row = source_row + 1
       end
+    end
+    patch_lines_since_yield = patch_lines_since_yield + 1
+    if yield_control and patch_lines_since_yield == PATCH_LINE_YIELD_INTERVAL then
+      patch_lines_since_yield = 0
+      yield_control()
     end
   end
   finish_hunk()

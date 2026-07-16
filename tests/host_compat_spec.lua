@@ -39,6 +39,24 @@ local function find_route(snapshots, route)
   return nil
 end
 
+local function assert_oracle_pair(snapshot)
+  h.truthy(snapshot, "route snapshot missing")
+  renderer.clear(snapshot.buffer)
+  lifecycle._refresh(snapshot)
+  h.truthy(vim.wait(1000, function()
+    return #extmarks(snapshot.buffer, renderer.namespace()) == 2
+  end, 5), snapshot.route .. " did not render the oracle pair")
+  local marks = extmarks(snapshot.buffer, renderer.namespace())
+  h.equal(marks[1][2], 0)
+  h.equal(marks[1][3], 0)
+  h.equal(marks[1][4].end_col, 3)
+  h.equal(marks[1][4].hl_group, "RaccoonInlineDiffDeleteText")
+  h.equal(marks[2][2], 1)
+  h.equal(marks[2][3], 0)
+  h.equal(marks[2][4].end_col, 3)
+  h.equal(marks[2][4].hl_group, "RaccoonInlineDiffAddText")
+end
+
 h.test("pinned host capabilities load with and without the extension", function()
   local compatible, err = adapter.check_compatibility()
   h.equal(compatible, true, err)
@@ -101,13 +119,18 @@ h.test("commit grid and maximized routes use copied real-buffer state", function
   local grid_marks = extmarks(grid, namespace)
   local max_marks = extmarks(maximum, namespace)
   local snapshots = adapter.snapshots()
-  h.truthy(find_route(snapshots, "commit_grid"))
-  h.truthy(find_route(snapshots, "commit_maximized"))
+  assert_oracle_pair(find_route(snapshots, "commit_grid"))
+  assert_oracle_pair(find_route(snapshots, "commit_maximized"))
+  state.focus_target = "filetree"
+  state.filetree_preview_path = "sample.lua"
+  assert_oracle_pair(find_route(adapter.snapshots(), "commit_preview"))
   h.deep_equal(extmarks(grid, namespace), grid_marks)
   h.deep_equal(extmarks(maximum, namespace), max_marks)
+  lifecycle.stop()
   state.active = false
   state.grid_bufs = {}
   state.maximize_buf = nil
+  state.filetree_preview_path = nil
 end)
 
 h.test("local Current changes preview is capability checked", function()
@@ -132,20 +155,80 @@ h.test("local Current changes preview is capability checked", function()
   state.select_generation = 4
   state.preview_generation = 2
   local snapshot = find_route(adapter.snapshots(), "current_changes_preview")
-  h.truthy(snapshot, "Current changes preview snapshot missing")
+  assert_oracle_pair(snapshot)
   h.equal(snapshot.records[1].kind, "deletion")
   h.equal(snapshot.records[2].kind, "addition")
+  lifecycle.stop()
   state.active = false
   state.grid_bufs = {}
   state.filetree_preview_path = nil
 end)
 
+h.test("local commit and Current changes route variants are explicit", function()
+  local grid = buffer({ "old", "new" })
+  local maximum = buffer({ "old", "new" })
+  local namespace = vim.api.nvim_get_namespaces().raccoon_local_commits
+  for _, target in ipairs({ grid, maximum }) do
+    vim.api.nvim_buf_set_extmark(target, namespace, 0, 0, {
+      line_hl_group = "RaccoonDelete",
+      sign_text = "-",
+    })
+    vim.api.nvim_buf_set_extmark(target, namespace, 1, 0, {
+      line_hl_group = "RaccoonAdd",
+      sign_text = "+",
+    })
+  end
+  local state = host_local._get_state()
+  state.active = true
+  state.grid_bufs = { grid }
+  state.maximize_buf = maximum
+  state.branch_commits = { { sha = "abc123", message = "commit" } }
+  state.base_commits = {}
+  state.selected_index = 1
+  state.focus_target = "sidebar"
+  state.select_generation = 7
+  local local_snapshots = adapter.snapshots()
+  assert_oracle_pair(find_route(local_snapshots, "local_grid"))
+  assert_oracle_pair(find_route(local_snapshots, "local_maximized"))
+  state.focus_target = "filetree"
+  state.filetree_preview_path = "sample.lua"
+  assert_oracle_pair(find_route(adapter.snapshots(), "local_preview"))
+
+  state.branch_commits = { { sha = nil, message = "Current changes" } }
+  state.focus_target = "sidebar"
+  state.filetree_preview_path = nil
+  local current_snapshots = adapter.snapshots()
+  assert_oracle_pair(find_route(current_snapshots, "current_changes_grid"))
+  assert_oracle_pair(find_route(current_snapshots, "current_changes_maximized"))
+
+  vim.api.nvim_buf_set_lines(grid, 0, -1, false, { "foo", "bar" })
+  vim.api.nvim_buf_clear_namespace(grid, namespace, 0, -1)
+  vim.api.nvim_buf_set_extmark(grid, namespace, 0, 0, {
+    line_hl_group = "RaccoonDelete",
+    sign_text = "-",
+  })
+  vim.api.nvim_buf_set_extmark(grid, namespace, 1, 0, {
+    line_hl_group = "RaccoonAdd",
+    sign_text = "+",
+  })
+  state.select_generation = 8
+  local refreshed = find_route(adapter.snapshots(), "current_changes_grid")
+  assert_oracle_pair(refreshed)
+  h.equal(refreshed.records[1].content, "foo")
+  h.equal(refreshed.records[2].content, "bar")
+  lifecycle.stop()
+  state.active = false
+  state.grid_bufs = {}
+  state.maximize_buf = nil
+end)
+
 h.test("missing private route capability fails closed", function()
   local original = package.loaded["raccoon.commits"]
   package.loaded["raccoon.commits"] = {}
-  local ok, snapshots = pcall(adapter.snapshots)
+  local ok, snapshots, issues = pcall(adapter.snapshots)
   h.equal(ok, true)
   h.equal(find_route(snapshots, "commit_grid"), nil)
+  h.equal(issues[1], "host version unavailable; missing capability raccoon.commits._get_state")
   package.loaded["raccoon.commits"] = original
 end)
 

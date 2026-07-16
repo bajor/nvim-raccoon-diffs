@@ -7,6 +7,7 @@
 local utf16 = require("raccoon_inline_diff.utf16")
 
 local M = {}
+local MYERS_YIELD_INTERVAL = 4096
 
 local function is_extended_word(codepoint)
   return (codepoint >= 0x61 and codepoint <= 0x7A)
@@ -181,8 +182,9 @@ end
 ---Synchronous Myers traversal used by diffWordsWithSpace in diff@9.0.0.
 ---@param old_value string
 ---@param new_value string
+---@param yield_control? function Optional scheduling hook; does not alter traversal order.
 ---@return table[]
-function M.diff_words_with_space(old_value, new_value)
+function M.diff_words_with_space(old_value, new_value, yield_control)
   local old_tokens = M.tokenize_words_with_space(old_value)
   local new_tokens = M.tokenize_words_with_space(new_value)
   local new_length = #new_tokens
@@ -200,6 +202,7 @@ function M.diff_words_with_space(old_value, new_value)
 
   local min_diagonal = -math.huge
   local max_diagonal = math.huge
+  local diagonal_steps = 0
   while edit_length <= max_edit_length do
     local diagonal = math.max(min_diagonal, -edit_length)
     local diagonal_end = math.min(max_diagonal, edit_length)
@@ -237,6 +240,11 @@ function M.diff_words_with_space(old_value, new_value)
         if new_position + 1 >= new_length then
           min_diagonal = math.max(min_diagonal, diagonal + 1)
         end
+      end
+      diagonal_steps = diagonal_steps + 1
+      if yield_control and diagonal_steps == MYERS_YIELD_INTERVAL then
+        diagonal_steps = 0
+        yield_control()
       end
       diagonal = diagonal + 2
     end

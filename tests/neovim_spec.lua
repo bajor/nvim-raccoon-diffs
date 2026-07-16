@@ -81,6 +81,13 @@ h.test("renderer fails closed for invalid UTF-8 byte boundaries", function()
   })
   h.equal(applied, false)
   h.equal(#marks(target, renderer.namespace()), 0)
+
+  local invalid = buffer({ "\240" })
+  applied = renderer.apply(invalid, {
+    { row = 0, start_byte = 0, end_byte = 1, side = "addition" },
+  })
+  h.equal(applied, false)
+  h.equal(#marks(invalid, renderer.namespace()), 0)
 end)
 
 h.test("renderer preserves user-defined highlights", function()
@@ -200,6 +207,39 @@ h.test("lifecycle cancels stale work after buffer changes", function()
   }
   lifecycle._refresh(snapshot)
   vim.api.nvim_buf_set_lines(target, 0, -1, false, { "reused" })
+  wait_for_scheduled()
+  h.equal(#marks(target, renderer.namespace()), 0)
+  lifecycle.stop()
+end)
+
+h.test("expensive Myers work yields before applying a stale result", function()
+  local deletion = {}
+  local addition = {}
+  for index = 1, 500 do
+    deletion[#deletion + 1] = string.char(33 + ((index * 17) % 90))
+    deletion[#deletion + 1] = " "
+    addition[#addition + 1] = string.char(33 + ((index * 31 + 7) % 90))
+    addition[#addition + 1] = "\t"
+  end
+  local target = buffer({ table.concat(deletion), table.concat(addition) })
+  lifecycle._refresh({
+    kind = "typed",
+    route = "commit_grid",
+    buffer = target,
+    changedtick = vim.api.nvim_buf_get_changedtick(target),
+    identity = "yielding",
+    records = {
+      { kind = "deletion", content = table.concat(deletion), source_row = 0 },
+      { kind = "addition", content = table.concat(addition), source_row = 1 },
+    },
+  })
+
+  local changed = false
+  vim.schedule(function()
+    vim.api.nvim_buf_set_lines(target, 0, -1, false, { "reused" })
+    changed = true
+  end)
+  h.truthy(vim.wait(1000, function() return changed end, 5), "event loop was blocked by Myers traversal")
   wait_for_scheduled()
   h.equal(#marks(target, renderer.namespace()), 0)
   lifecycle.stop()

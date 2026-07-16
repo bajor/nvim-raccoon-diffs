@@ -53,6 +53,16 @@ h.test("word tokenizer follows jsdiff Unicode and whitespace classes", function(
   })
 end)
 
+h.test("scheduled Myers chunks preserve exact output", function()
+  local deletion = string.rep("a ", 120)
+  local addition = string.rep("b\t", 120)
+  local expected = planner.line_diff(deletion, addition)
+  local yields = 0
+  local actual = planner.line_diff(deletion, addition, function() yields = yields + 1 end)
+  h.truthy(yields > 0, "test input must cross a Myers scheduling boundary")
+  h.deep_equal(actual, expected)
+end)
+
 h.test("positional pairing covers equal and unequal block shapes", function()
   local records = {
     { kind = "deletion", content = "old-1", source_row = 0 },
@@ -79,6 +89,55 @@ h.test("positional pairing covers equal and unequal block shapes", function()
   h.equal(deletion_only[2].addition, nil)
 end)
 
+h.test("insertions and deletions never trigger similarity realignment", function()
+  local function pairs(deletions, additions)
+    local records = {}
+    for _, content in ipairs(deletions) do
+      records[#records + 1] = { kind = "deletion", content = content }
+    end
+    for _, content in ipairs(additions) do
+      records[#records + 1] = { kind = "addition", content = content }
+    end
+    local result = {}
+    for _, row in ipairs(planner.plan_typed_lines(records)) do
+      result[#result + 1] = {
+        row.deletion and row.deletion.content or false,
+        row.addition and row.addition.content or false,
+      }
+    end
+    return result
+  end
+
+  h.deep_equal(pairs({}, { "added" }), { { false, "added" } })
+  h.deep_equal(pairs({ "deleted" }, {}), { { "deleted", false } })
+  h.deep_equal(pairs({ "old-1", "old-2" }, { "new-1", "new-2" }), {
+    { "old-1", "new-1" }, { "old-2", "new-2" },
+  })
+  h.deep_equal(pairs({ "old-1", "old-2", "old-3" }, { "new-1" }), {
+    { "old-1", "new-1" }, { "old-2", false }, { "old-3", false },
+  })
+
+  h.deep_equal(pairs({ "old-1", "old-2" }, { "inserted", "new-1", "new-2" }), {
+    { "old-1", "inserted" }, { "old-2", "new-1" }, { false, "new-2" },
+  })
+  h.deep_equal(pairs({ "old-1", "old-2" }, { "new-1", "inserted", "new-2" }), {
+    { "old-1", "new-1" }, { "old-2", "inserted" }, { false, "new-2" },
+  })
+  h.deep_equal(pairs({ "old-1", "old-2" }, { "new-1", "new-2", "inserted" }), {
+    { "old-1", "new-1" }, { "old-2", "new-2" }, { false, "inserted" },
+  })
+
+  h.deep_equal(pairs({ "deleted", "old-1", "old-2" }, { "new-1", "new-2" }), {
+    { "deleted", "new-1" }, { "old-1", "new-2" }, { "old-2", false },
+  })
+  h.deep_equal(pairs({ "old-1", "deleted", "old-2" }, { "new-1", "new-2" }), {
+    { "old-1", "new-1" }, { "deleted", "new-2" }, { "old-2", false },
+  })
+  h.deep_equal(pairs({ "old-1", "old-2", "deleted" }, { "new-1", "new-2" }), {
+    { "old-1", "new-1" }, { "old-2", "new-2" }, { "deleted", false },
+  })
+end)
+
 h.test("context and hunk boundaries prevent cross-block pairing", function()
   local patch = table.concat({
     "@@ -1,3 +1,3 @@\n",
@@ -95,12 +154,17 @@ h.test("context and hunk boundaries prevent cross-block pairing", function()
   h.equal(#plan.hunks, 2)
   h.equal(#plan.rows, 4)
   h.equal(plan.rows[1].deletion.old_line, 1)
+  h.equal(plan.rows[1].deletion.anchor_line, 0)
+  h.equal(plan.rows[1].deletion.hunk_position, 1)
   h.equal(plan.rows[1].addition.new_line, 1)
+  h.equal(plan.rows[1].addition.hunk_position, 2)
   h.equal(plan.rows[2].kind, "context")
   h.equal(plan.rows[3].deletion.old_line, 10)
+  h.equal(plan.rows[3].deletion.anchor_line, 9)
   h.equal(plan.rows[3].addition.new_line, 10)
   h.equal(plan.rows[4].deletion, nil)
   h.equal(plan.rows[4].addition.no_eof_newline, true)
+  h.equal(plan.rows[4].addition.content, "extra")
 end)
 
 h.test("planner output is deterministic", function()

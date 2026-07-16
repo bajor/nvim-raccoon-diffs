@@ -1,6 +1,6 @@
 local M = {}
 
-local MINIMUM_NVIM = { 0, 10, 0 }
+local MINIMUM_NVIM = { 0, 10, 4 }
 
 local function nvim_at_least(required)
   local current = vim.version()
@@ -13,7 +13,7 @@ end
 ---@return string?
 function M.check_compatibility()
   if not nvim_at_least(MINIMUM_NVIM) then
-    return false, "Neovim 0.10.0 or newer is required"
+    return false, "Neovim 0.10.4 or newer is required"
   end
   local required_apis = {
     "nvim_buf_get_extmarks",
@@ -113,13 +113,20 @@ local function selected_local_commit(state)
   return (state.base_commits or {})[index - #branch]
 end
 
-local function collect_viewer(module_name, namespace_name, prefix, snapshots, seen)
+local function collect_viewer(module_name, namespace_name, prefix, snapshots, seen, issues)
   local module = package.loaded[module_name]
-  if type(module) ~= "table" or type(module._get_state) ~= "function" then return end
+  if module == nil then return end
+  if type(module) ~= "table" or type(module._get_state) ~= "function" then
+    issues[#issues + 1] = "host version unavailable; missing capability " .. module_name .. "._get_state"
+    return
+  end
   local ok, state = pcall(module._get_state)
   if not ok or type(state) ~= "table" or state.active ~= true then return end
   local namespace = vim.api.nvim_get_namespaces()[namespace_name]
-  if not namespace then return end
+  if not namespace then
+    issues[#issues + 1] = "host version unavailable; missing namespace " .. namespace_name
+    return
+  end
 
   local current_changes = false
   if prefix == "local" then
@@ -157,13 +164,14 @@ local function join_path(root, path)
   return root:gsub("/$", "") .. "/" .. path
 end
 
-local function collect_flat(snapshots, seen)
+local function collect_flat(snapshots, seen, issues)
   local state = package.loaded["raccoon.state"]
-  if type(state) ~= "table"
-    or type(state.is_active) ~= "function"
+  if state == nil then return end
+  if type(state) ~= "table" or type(state.is_active) ~= "function"
     or type(state.get_clone_path) ~= "function"
     or type(state.get_files) ~= "function"
   then
+    issues[#issues + 1] = "host version unavailable; missing flat-view state capabilities"
     return
   end
   local ok_active, active = pcall(state.is_active)
@@ -201,13 +209,15 @@ end
 
 ---Copy supported host views into immutable planner input snapshots.
 ---@return table[]
+---@return string[]
 function M.snapshots()
   local snapshots = {}
   local seen = {}
-  collect_viewer("raccoon.commits", "raccoon_commits", "commit", snapshots, seen)
-  collect_viewer("raccoon.localcommits", "raccoon_local_commits", "local", snapshots, seen)
-  collect_flat(snapshots, seen)
-  return snapshots
+  local issues = {}
+  collect_viewer("raccoon.commits", "raccoon_commits", "commit", snapshots, seen, issues)
+  collect_viewer("raccoon.localcommits", "raccoon_local_commits", "local", snapshots, seen, issues)
+  collect_flat(snapshots, seen, issues)
+  return snapshots, issues
 end
 
 return M

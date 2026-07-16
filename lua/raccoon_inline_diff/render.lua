@@ -1,3 +1,5 @@
+local utf16 = require("raccoon_inline_diff.utf16")
+
 local M = {}
 
 local NAMESPACE = vim.api.nvim_create_namespace("raccoon_inline_diff")
@@ -31,25 +33,10 @@ function M.clear(buffer)
 end
 
 local function byte_boundaries(line)
-  local boundaries = { [0] = true, [#line] = true }
-  local index = 1
-  while index <= #line do
-    local first = line:byte(index)
-    local length
-    if first <= 0x7F then
-      length = 1
-    elseif first >= 0xC2 and first <= 0xDF then
-      length = 2
-    elseif first >= 0xE0 and first <= 0xEF then
-      length = 3
-    elseif first >= 0xF0 and first <= 0xF4 then
-      length = 4
-    else
-      return nil
-    end
-    index = index + length
-    boundaries[index - 1] = true
-  end
+  local ok, decoded = pcall(utf16.decode, line)
+  if not ok then return nil end
+  local boundaries = { [0] = true }
+  for _, item in ipairs(decoded) do boundaries[item.byte_end] = true end
   return boundaries
 end
 

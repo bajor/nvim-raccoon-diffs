@@ -42,9 +42,9 @@ local function append_ranges(marks, record, ranges, side, lines)
   end
 end
 
-local function plan_typed_snapshot(snapshot)
+local function plan_typed_snapshot(snapshot, yield_control)
   local marks = {}
-  local rows = planner.plan_typed_lines(snapshot.records)
+  local rows = planner.plan_typed_lines(snapshot.records, yield_control)
   local lines = {}
   for _, record in ipairs(snapshot.records) do lines[record.source_row + 1] = record.content end
   for _, row in ipairs(rows) do
@@ -56,9 +56,9 @@ local function plan_typed_snapshot(snapshot)
   return marks
 end
 
-local function plan_flat_snapshot(snapshot)
+local function plan_flat_snapshot(snapshot, yield_control)
   local marks = {}
-  local plan = planner.plan_patch(snapshot.patch)
+  local plan = planner.plan_patch(snapshot.patch, yield_control)
   for _, row in ipairs(plan.rows) do
     if row.inline and row.addition and not row.inline.suppressed then
       local source_row = row.addition.new_line - 1
@@ -78,9 +78,9 @@ local function plan_flat_snapshot(snapshot)
   return marks
 end
 
-local function compute(snapshot)
-  if snapshot.kind == "typed" then return plan_typed_snapshot(snapshot) end
-  if snapshot.kind == "flat" then return plan_flat_snapshot(snapshot) end
+local function compute(snapshot, yield_control)
+  if snapshot.kind == "typed" then return plan_typed_snapshot(snapshot, yield_control) end
+  if snapshot.kind == "flat" then return plan_flat_snapshot(snapshot, yield_control) end
   error("unsupported host snapshot kind: " .. tostring(snapshot.kind))
 end
 
@@ -90,27 +90,36 @@ function M._refresh(snapshot)
   local generation = (current and current.generation or 0) + 1
   states[snapshot.buffer] = { identity = snapshot.identity, generation = generation, route = snapshot.route }
 
-  vim.schedule(function()
+  local worker = coroutine.create(function()
+    return compute(snapshot, coroutine.yield)
+  end)
+  local function resume_worker()
     if not snapshot_is_current(snapshot, generation) then return end
-    local ok, marks = pcall(compute, snapshot)
+    local ok, marks = coroutine.resume(worker)
     if not ok then
       renderer.clear(snapshot.buffer)
       notify_once("failed closed for " .. snapshot.route .. ": " .. tostring(marks))
       return
     end
+    if coroutine.status(worker) ~= "dead" then
+      vim.defer_fn(resume_worker, 0)
+      return
+    end
     if not snapshot_is_current(snapshot, generation) then return end
     local applied, err = renderer.apply(snapshot.buffer, marks)
     if not applied and err then notify_once("failed closed for " .. snapshot.route .. ": " .. err) end
-  end)
+  end
+  vim.schedule(resume_worker)
 end
 
 function M.scan()
   if not running then return end
-  local ok, snapshots = pcall(adapter.snapshots)
+  local ok, snapshots, issues = pcall(adapter.snapshots)
   if not ok then
     notify_once("host adapter failed: " .. tostring(snapshots))
     return
   end
+  for _, issue in ipairs(issues or {}) do notify_once(issue) end
   local seen = {}
   for _, snapshot in ipairs(snapshots) do
     seen[snapshot.buffer] = true
