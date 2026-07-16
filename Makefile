@@ -1,4 +1,4 @@
-.PHONY: install uninstall test test-pure test-neovim test-host test-host-main test-host-stable lint
+.PHONY: install test test-pure test-neovim test-host test-host-main test-host-stable lint
 
 PACK_DIR := $(HOME)/.config/nvim/pack/local/start
 PLUGIN_NAME := nvim-raccoon-diffs
@@ -17,11 +17,6 @@ install:
 	@ln -s $(CURDIR) $(PACK_DIR)/$(PLUGIN_NAME)
 	@echo "Symlinked $(CURDIR) -> $(PACK_DIR)/$(PLUGIN_NAME)"
 	@echo "Done! Restart Neovim to load the plugin."
-
-uninstall:
-	@echo "Uninstalling $(PLUGIN_NAME)..."
-	@rm -rf $(PACK_DIR)/$(PLUGIN_NAME)
-	@echo "Done!"
 
 test: test-pure test-neovim test-host lint
 
