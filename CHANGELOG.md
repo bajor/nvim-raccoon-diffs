@@ -3,6 +3,15 @@
 All notable changes to this project are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.1.1] - 2026-09-25
+
+### Fixed
+
+- Stop copying every tracked buffer's text on each 100 ms poll. Snapshots now
+  carry a cheap identity and copy buffer lines only when the view changed; a
+  large flat pull request with ten 20,000-line files went from about 32 ms of
+  main-thread work per poll to effectively zero while idle.
+
 ## [0.1.0] - 2026-07-16
 
 ### Added

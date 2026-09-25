@@ -86,9 +86,15 @@ end
 
 function M._refresh(snapshot)
   local current = states[snapshot.buffer]
-  if current and current.identity == snapshot.identity then return end
+  if current and current.identity == snapshot.identity and current.patch == snapshot.patch then return end
   local generation = (current and current.generation or 0) + 1
-  states[snapshot.buffer] = { identity = snapshot.identity, generation = generation, route = snapshot.route }
+  states[snapshot.buffer] = {
+    identity = snapshot.identity,
+    patch = snapshot.patch,
+    generation = generation,
+    route = snapshot.route,
+  }
+  if snapshot.load then snapshot.load() end
 
   local worker = coroutine.create(function()
     return compute(snapshot, coroutine.yield)

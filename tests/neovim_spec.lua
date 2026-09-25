@@ -126,6 +126,8 @@ h.test("host adapter copies real commit grid data without host mutation", functi
   local snapshots = adapter.snapshots()
   h.equal(#snapshots, 1)
   h.equal(snapshots[1].route, "commit_grid")
+  h.equal(snapshots[1].records, nil)
+  snapshots[1].load()
   h.equal(snapshots[1].records[1].kind, "deletion")
   h.equal(snapshots[1].records[2].kind, "addition")
   h.equal(snapshots[1].records[3].kind, "context")
@@ -187,6 +189,24 @@ h.test("flat adapter copies patch data and lifecycle leaves deleted virtual line
   wait_for_scheduled()
   h.equal(#marks(target, renderer.namespace()), 1)
   h.deep_equal(marks(target, host_namespace), host_marks_before)
+
+  -- An unchanged view must not copy buffer text again on the next poll.
+  local unchanged = adapter.snapshots()[1]
+  local loads = 0
+  local load = unchanged.load
+  unchanged.load = function() loads = loads + 1; load() end
+  lifecycle._refresh(unchanged)
+  h.equal(loads, 0)
+
+  -- A new patch for the same buffer text still replans.
+  patch = "@@ -1,1 +1,1 @@\n-new thing\n+new value\n"
+  local replanned = adapter.snapshots()[1]
+  lifecycle._refresh(replanned)
+  h.truthy(replanned.lines ~= nil, "changed patch did not reload the buffer")
+  wait_for_scheduled()
+  local rendered = marks(target, renderer.namespace())
+  h.equal(#rendered, 1)
+  h.equal(rendered[1][3], 4)
   lifecycle.stop()
   h.equal(#marks(target, renderer.namespace()), 0)
   h.deep_equal(marks(target, host_namespace), host_marks_before)
