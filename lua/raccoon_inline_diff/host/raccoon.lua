@@ -50,8 +50,7 @@ local function host_extmarks(buffer, namespace)
   return ok and marks or {}
 end
 
-local function typed_records(buffer, namespace)
-  local lines = buffer_lines(buffer)
+local function typed_kinds(buffer, namespace)
   local kinds = {}
   for _, mark in ipairs(host_extmarks(buffer, namespace)) do
     local row = mark[2]
@@ -62,7 +61,10 @@ local function typed_records(buffer, namespace)
       kinds[row] = "deletion"
     end
   end
+  return kinds
+end
 
+local function typed_records(lines, kinds)
   local records = {}
   for index, content in ipairs(lines) do
     records[index] = {
@@ -83,9 +85,10 @@ end
 local function real_snapshot(buffer, namespace, route, state)
   if not buffer or not vim.api.nvim_buf_is_valid(buffer) or not vim.api.nvim_buf_is_loaded(buffer) then return nil end
   local changedtick = vim.api.nvim_buf_get_changedtick(buffer)
-  local records = typed_records(buffer, namespace)
+  local kinds = typed_kinds(buffer, namespace)
+  local line_count = vim.api.nvim_buf_line_count(buffer)
   local signature = {}
-  for _, record in ipairs(records) do signature[#signature + 1] = record.kind:sub(1, 1) end
+  for row = 0, line_count - 1 do signature[row + 1] = (kinds[row] or "context"):sub(1, 1) end
   local identity = table.concat({
     route,
     scalar(state.select_generation),
@@ -96,14 +99,19 @@ local function real_snapshot(buffer, namespace, route, state)
     tostring(changedtick),
     table.concat(signature),
   }, ":")
-  return {
+  local snapshot = {
     kind = "typed",
     route = route,
     buffer = buffer,
     changedtick = changedtick,
     identity = identity,
-    records = records,
   }
+  -- Copying buffer text is deferred until the identity changes, so idle polls
+  -- stay cheap on large buffers. The copy must happen in the same tick.
+  function snapshot.load()
+    snapshot.records = typed_records(buffer_lines(buffer), kinds)
+  end
+  return snapshot
 end
 
 local function selected_local_commit(state)
@@ -190,24 +198,27 @@ local function collect_flat(snapshots, seen, issues)
     if type(file) == "table" and type(file.filename) == "string" and type(file.patch) == "string" then
       local buffer = buffers_by_name[join_path(root, file.filename)]
       if buffer and not seen[buffer] then
-        local patch = file.patch
         local changedtick = vim.api.nvim_buf_get_changedtick(buffer)
-        snapshots[#snapshots + 1] = {
+        local snapshot = {
           kind = "flat",
           route = "flat_pr_additions",
           buffer = buffer,
           changedtick = changedtick,
-          identity = table.concat({ "flat", file.filename, tostring(changedtick), tostring(#patch), patch }, ":"),
-          patch = patch,
-          lines = buffer_lines(buffer),
+          identity = table.concat({ "flat", file.filename, tostring(changedtick) }, ":"),
+          patch = file.patch,
         }
+        function snapshot.load()
+          snapshot.lines = buffer_lines(buffer)
+        end
+        snapshots[#snapshots + 1] = snapshot
         seen[buffer] = true
       end
     end
   end
 end
 
----Copy supported host views into immutable planner input snapshots.
+---Describe supported host views. Each snapshot carries a cheap identity; call
+---its `load` in the same tick to copy the buffer text the planner needs.
 ---@return table[]
 ---@return string[]
 function M.snapshots()
